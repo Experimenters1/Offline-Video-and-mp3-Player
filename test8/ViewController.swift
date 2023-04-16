@@ -1,8 +1,8 @@
 //
 //  ViewController.swift
-//  test
+//  test9
 //
-//  Created by huy on 07/04/2023.
+//  Created by huy on 12/04/2023.
 //
 
 import UIKit
@@ -16,7 +16,9 @@ class ViewController: UIViewController, UINavigationControllerDelegate {
     
     let userDefaults = UserDefaults.standard
     var links: [[String: Any]] = []
-
+    let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+    
+    
         override func viewDidLoad() {
             super.viewDidLoad()
 
@@ -30,18 +32,50 @@ class ViewController: UIViewController, UINavigationControllerDelegate {
 
 
     // MARK: Load Links
-       
+
        func loadLinks() {
            if let savedLinks = userDefaults.array(forKey: "savedLinks") as? [[String: Any]] {
                links = savedLinks
            }
        }
-       
+
        // MARK: Save Links
-       
+
        func saveLinks() {
+           // Lưu mảng các đường dẫn vào UserDefaults
            userDefaults.set(links, forKey: "savedLinks")
        }
+
+       func copyFileToDocumentsFolder(fileURL: URL, fileName: String) {
+           let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+           let destinationURL = documentsURL.appendingPathComponent(fileName)
+
+           do {
+               try FileManager.default.copyItem(at: fileURL, to: destinationURL)
+               print("File copied to: \(destinationURL)")
+
+               // Lưu đường dẫn của file vào UserDefaults
+               userDefaults.set(destinationURL.path, forKey: "copiedFilePath")
+
+               // Đọc nội dung của tệp và lưu vào bộ nhớ
+               let fileData = try Data(contentsOf: destinationURL)
+               userDefaults.set(fileData, forKey: "copiedFileData")
+
+           } catch let error {
+               print("Error copying file: \(error.localizedDescription)")
+           }
+       }
+
+       func readFileFromDocumentsFolder(url: URL) -> Data? {
+           do {
+               let fileData = try Data(contentsOf: url)
+               return fileData
+           } catch {
+               print("Error reading file: \(error.localizedDescription)")
+               return nil
+           }
+       }
+       
        
     @IBAction func addLinkButtonTapped(_ sender: Any) {
         let filePicker = UIDocumentPickerViewController(documentTypes: [kUTTypeMP3 as String, kUTTypeMovie as String], in: .import)
@@ -54,16 +88,14 @@ class ViewController: UIViewController, UINavigationControllerDelegate {
         let picker = UIImagePickerController()
         picker.delegate = self
         picker.sourceType = .photoLibrary
-        picker.mediaTypes = [kUTTypeMovie as String, kUTTypeImage as String]
+        picker.mediaTypes = [kUTTypeMovie as String]
         present(picker, animated: true)
     }
 
 }
 
 // MARK: - UITableViewDataSource
-
 // MARK: - UITableViewDataSource
-
 extension ViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         return links.count
@@ -71,6 +103,9 @@ extension ViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
         return 60
     }
+    
+    
+    
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         var cell: UITableViewCell! = tableView.dequeueReusableCell(withIdentifier: "reuseIdentifier")
         if cell == nil {
@@ -87,25 +122,44 @@ extension ViewController: UITableViewDataSource {
         
         return cell
     }
+    
+    func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
+        if editingStyle == .delete {
+            // Xóa link khỏi mảng và cập nhật UserDefaults
+            links.remove(at: indexPath.row)
+            saveLinks()
+            
+            // Xóa hàng từ bảng
+            tableView.deleteRows(at: [indexPath], with: .fade)
+        }
+    }
+    
+    
 }
 
 // MARK: - UIDocumentPickerDelegate
 extension ViewController: UIDocumentPickerDelegate {
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
         guard let selectedUrl = urls.first else { return }
-        
+
         let name = selectedUrl.lastPathComponent
-        
         let dateFormatter = DateFormatter()
         dateFormatter.dateStyle = .medium
         dateFormatter.timeStyle = .medium
         let date = dateFormatter.string(from: Date())
-        
-        let newLink = ["name": name, "date": date, "url": selectedUrl.absoluteString]
+
+        let newLink: [String: Any] = ["name": name, "date": date, "url": selectedUrl.absoluteString]
+
+        if FileManager.default.fileExists(atPath: selectedUrl.path) {
+            // Lưu trữ file vào Documents directory
+            copyFileToDocumentsFolder(fileURL: selectedUrl, fileName: name)
+        }
+
         links.append(newLink)
         saveLinks()
         tableView.reloadData()
     }
+
     
     func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
         controller.dismiss(animated: true, completion: nil)
@@ -114,7 +168,6 @@ extension ViewController: UIDocumentPickerDelegate {
 
 
 // MARK: - UITableViewDelegate
-
 
 
 extension ViewController: UITableViewDelegate {
@@ -149,7 +202,6 @@ extension ViewController: UITableViewDelegate {
     
     
 // MARK: - UIDocumentPickerDelegate
-
 extension ViewController: UIImagePickerControllerDelegate {
 
 func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
@@ -188,7 +240,6 @@ func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
 
     
     // MARK: - UIImagePickerControllerDelegate
-
 extension URL {
     var typeIdentifier: String? {
         return (try? resourceValues(forKeys: [.typeIdentifierKey]))?.typeIdentifier
